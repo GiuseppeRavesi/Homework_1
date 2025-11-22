@@ -1,0 +1,37 @@
+version: "3"
+
+services:
+  user_db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users
+    volumes:
+      - ./database/user_db_init.sql:/docker-entrypoint-initdb.d/user_db_init.sql
+    ports:
+      - "5433:5432"
+
+  data_db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flights
+    volumes:
+      - ./database/data_db_init.sql:/docker-entrypoint-initdb.d/data_db_init.sql
+    ports:
+      - "5434:5432"
+
+  user_manager:
+    build: ./user_manager
+    ports:
+      - "5000:5000"
+    depends_on:
+      - user_db
+
+  data_collector:
+    build: ./data_collector
+    ports:
+      - "5001:5001"
+    depends_on:
+      - data_db
+      - user_manager

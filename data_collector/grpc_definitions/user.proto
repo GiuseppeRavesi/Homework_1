@@ -1,0 +1,14 @@
+// Placeholder proto file
+syntax = "proto3";
+
+service UserService {
+  rpc CheckUser(UserCheckRequest) returns (UserCheckResponse);
+}
+
+message UserCheckRequest {
+  string email = 1;
+}
+
+message UserCheckResponse {
+  bool exists = 1;
+}
