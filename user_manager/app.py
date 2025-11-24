@@ -62,6 +62,25 @@ def register():
 def exists(email):
     return jsonify({"exists": user_exists(email)})
 
+
+# Health check endpoint
+@app.route("/health", methods=["GET"])
+def health():
+    status = {"ok": True}
+    try:
+        if conn is None:
+            raise Exception("no db connection")
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        status["db"] = "ok"
+    except Exception as e:
+        status["ok"] = False
+        status["db"] = "fail"
+        status["error"] = str(e)
+    return jsonify(status), (200 if status["ok"] else 503)
+
 # ---- SERVIZIO GRPC ----
 class UserService(user_pb2_grpc.UserServiceServicer):
     def CheckUserExists(self, request, context):
