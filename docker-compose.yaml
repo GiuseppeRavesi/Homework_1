@@ -36,7 +36,8 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - user_db
+      user_db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 10s
@@ -48,8 +49,10 @@ services:
     ports:
       - "5001:5001"
     depends_on:
-      - data_db
-      - user_manager
+      data_db:
+        condition: service_healthy
+      user_manager:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5001/health || exit 1"]
       interval: 10s

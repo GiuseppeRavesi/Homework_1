@@ -50,6 +50,14 @@ def add_user(email):
     )
     cur.close()
 
+def delete_user(email):
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM users WHERE email=%s",
+        (email,)
+    )
+    cur.close()
+
 # ---- ENDPOINT REST ----
 @app.route("/register", methods=["POST"])
 def register():
@@ -62,6 +70,13 @@ def register():
 def exists(email):
     return jsonify({"exists": user_exists(email)})
 
+@app.route("/delete/<email>", methods=["DELETE"])
+def delete(email):
+    if  user_exists(email):
+        delete_user(email)
+        return jsonify({"status": "deleted", "email": email})
+    else:
+        return jsonify({"status": "not found", "email": email}), 404
 
 # Health check endpoint
 @app.route("/health", methods=["GET"])
@@ -89,7 +104,7 @@ class UserService(user_pb2_grpc.UserServiceServicer):
         return user_pb2.UserCheckResponse(exists=exists)
 
 def start_grpc():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     user_pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
     server.add_insecure_port(f"[::]:{GRPC_PORT}")
     server.start()
