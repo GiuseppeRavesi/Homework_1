@@ -3,6 +3,7 @@ import psycopg2
 import grpc
 from concurrent import futures
 import os
+import uuid
 
 
 from grpc_definitions import user_pb2, user_pb2_grpc
@@ -58,13 +59,58 @@ def delete_user(email):
     )
     cur.close()
 
+# ---- AT MOST ONE INSTANCE ----
+def is_valid_uuid(val):
+    try:
+        uuid.UUID(str(val))
+        return True
+    except:
+        return False
+
+def already_processed(request_id):
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM processed_requests WHERE request_id=%s", (request_id,))
+    exists = cur.fetchone() is not None
+    cur.close()
+    return exists
+
+def mark_processed(request_id):
+    cur = conn.cursor()
+    cur.execute("INSERT INTO processed_requests(request_id) VALUES (%s)", (request_id,))
+    cur.close()
+
 # ---- ENDPOINT REST ----
 @app.route("/register", methods=["POST"])
 def register():
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
     data = request.get_json()
     email = data.get("email")
+    request_id = data.get("request_id")
+
+    if not email:
+        return jsonify({"error": "Missing email"}), 400
+    if not request_id:
+        return jsonify({"error": "Missing request_id"}), 400
+    if not is_valid_uuid(request_id):
+        return jsonify({"error": "Invalid request_id (must be UUID)"}), 400
+
+    if already_processed(request_id):
+        return jsonify({
+            "status": "duplicate",
+            "message": "Request already processed"
+        }), 200
+
     add_user(email)
-    return jsonify({"status": "ok", "email": email})
+
+    mark_processed(request_id)
+
+    return jsonify({
+        "status": "ok",
+        "email": email,
+        "request_id": request_id
+    }), 201
 
 @app.route("/exists/<email>", methods=["GET"])
 def exists(email):
@@ -78,7 +124,6 @@ def delete(email):
     else:
         return jsonify({"status": "not found", "email": email}), 404
 
-# Health check endpoint
 @app.route("/health", methods=["GET"])
 def health():
     status = {"ok": True}
@@ -95,6 +140,14 @@ def health():
         status["db"] = "fail"
         status["error"] = str(e)
     return jsonify(status), (200 if status["ok"] else 503)
+
+@app.route("/users", methods=["GET"])
+def list_users():
+    cur = conn.cursor()
+    cur.execute("SELECT email FROM users")
+    users = [row[0] for row in cur.fetchall()]
+    cur.close()
+    return jsonify({"users": users})
 
 # ---- SERVIZIO GRPC ----
 class UserService(user_pb2_grpc.UserServiceServicer):
