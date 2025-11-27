@@ -43,11 +43,11 @@ def user_exists(email):
     cur.close()
     return res
 
-def add_user(email):
+def add_user(email, fiscal_code, bank_account):
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO users(email) VALUES (%s) ON CONFLICT DO NOTHING;",
-        (email,)
+        "INSERT INTO users(email, fiscal_code, bank_account) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING;",
+        (email, fiscal_code, bank_account,)
     )
     cur.close()
 
@@ -87,6 +87,8 @@ def register():
 
     data = request.get_json()
     email = data.get("email")
+    fiscal_code = data.get("fiscal_code")
+    bank_account = data.get("bank_account")
     request_id = data.get("request_id")
 
     if not email:
@@ -102,7 +104,7 @@ def register():
             "message": "Request already processed"
         }), 200
 
-    add_user(email)
+    add_user(email, fiscal_code, bank_account)
 
     mark_processed(request_id)
 
