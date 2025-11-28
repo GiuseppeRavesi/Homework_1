@@ -93,6 +93,10 @@ def register():
 
     if not email:
         return jsonify({"error": "Missing email"}), 400
+    if not fiscal_code:
+        return jsonify({"error": "Missing fiscal_code"}), 400
+    if not bank_account:
+        return jsonify({"error": "Missing bank_account"}), 400
     if not request_id:
         return jsonify({"error": "Missing request_id"}), 400
     if not is_valid_uuid(request_id):
