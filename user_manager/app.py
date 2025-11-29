@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify
 import psycopg2
 import grpc
-from concurrent import futures
 import os
 import uuid
-
+from concurrent import futures
 
 from grpc_definitions import user_pb2, user_pb2_grpc
 
 app = Flask(__name__)
 
-# ---- CONFIGURAZIONE ----
+# ----------------------------------
+# CONFIG DB
+# ----------------------------------
 DB_HOST = os.getenv("DB_HOST", "user_db")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
 DB_NAME = os.getenv("DB_NAME", "users")
@@ -20,7 +21,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 LISTEN_PORT = int(os.getenv("LISTEN_PORT", 5000))
 GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
 
-# ---- CONNESSIONE AL DATABASE ----
+# ----------------------------------
+# CONNESSIONE DB
+# ----------------------------------
 try:
     conn = psycopg2.connect(
         host=DB_HOST,
@@ -32,10 +35,13 @@ try:
     conn.autocommit = True
     print(f"[UserManager] Connesso a PostgreSQL su {DB_HOST}:{DB_PORT}")
 except Exception as e:
-    print(f"[UserManager] ERRORE di connessione al DB: {e}")
+    print(f"[UserManager] ERRORE DI CONNESSIONE AL DB: {e}")
     conn = None
 
-# ---- FUNZIONI DB ----
+
+# ----------------------------------
+# FUNZIONI DB
+# ----------------------------------
 def user_exists(email):
     cur = conn.cursor()
     cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE email=%s)", (email,))
@@ -79,7 +85,29 @@ def mark_processed(request_id):
     cur.execute("INSERT INTO processed_requests(request_id) VALUES (%s)", (request_id,))
     cur.close()
 
-# ---- ENDPOINT REST ----
+# ----------------------------------
+# gRPC SERVICE
+# ----------------------------------
+class UserService(user_pb2_grpc.UserServiceServicer):
+
+    def CheckUser(self, request, context):
+        print(f"[gRPC] CheckUser chiamato per: {request.email}")
+        exists = user_exists(request.email)
+        return user_pb2.UserCheckResponse(exists=exists)
+
+
+def start_grpc():
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    user_pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
+    server.add_insecure_port(f"[::]:{GRPC_PORT}")
+    server.start()
+    print(f"[UserManager] gRPC in ascolto su {GRPC_PORT}")
+    return server
+
+
+# ----------------------------------
+# ENDPOINT REST
+# ----------------------------------
 @app.route("/register", methods=["POST"])
 def register():
     if not request.is_json:
@@ -132,20 +160,14 @@ def delete(email):
 
 @app.route("/health", methods=["GET"])
 def health():
-    status = {"ok": True}
     try:
-        if conn is None:
-            raise Exception("no db connection")
         cur = conn.cursor()
         cur.execute("SELECT 1")
         cur.fetchone()
         cur.close()
-        status["db"] = "ok"
-    except Exception as e:
-        status["ok"] = False
-        status["db"] = "fail"
-        status["error"] = str(e)
-    return jsonify(status), (200 if status["ok"] else 503)
+        return jsonify({"ok": True})
+    except:
+        return jsonify({"ok": False}), 503
 
 @app.route("/users", methods=["GET"])
 def list_users():
@@ -154,26 +176,12 @@ def list_users():
     users = [row[0] for row in cur.fetchall()]
     cur.close()
     return jsonify({"users": users})
-
-# ---- SERVIZIO GRPC ----
-class UserService(user_pb2_grpc.UserServiceServicer):
-    def CheckUserExists(self, request, context):
-        print("[gRPC] CheckUserExists chiamato per:", request.email)
-        exists = user_exists(request.email)
-        return user_pb2.UserCheckResponse(exists=exists)
-
-def start_grpc():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    user_pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
-    server.add_insecure_port(f"[::]:{GRPC_PORT}")
-    server.start()
-    print(f"[UserManager] gRPC in ascolto su port {GRPC_PORT}")
-
-# ---- MAIN ----
+# ----------------------------------
+# MAIN
+# ----------------------------------
 if __name__ == "__main__":
-    # Avvia gRPC
-    start_grpc()
+    grpc_server = start_grpc()
 
-    # Avvia Flask
-    app.run(host="0.0.0.0", port=LISTEN_PORT)
-    print(f"[UserManager] REST in ascolto su port {LISTEN_PORT}")
+    app.run(host="0.0.0.0", port=LISTEN_PORT, debug=False, use_reloader=False)
+
+    grpc_server.wait_for_termination()

@@ -8,8 +8,8 @@ services:
       POSTGRES_DB: users
     volumes:
       - ./database/user_db_init.sql:/docker-entrypoint-initdb.d/user_db_init.sql
-    ports:
-      - "5433:5432"
+    networks:
+      - user_network
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
@@ -23,8 +23,8 @@ services:
       POSTGRES_DB: flights
     volumes:
       - ./database/data_db_init.sql:/docker-entrypoint-initdb.d/data_db_init.sql
-    ports:
-      - "5434:5432"
+    networks:
+      - data_network
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
@@ -35,6 +35,7 @@ services:
     build: ./user_manager
     ports:
       - "5000:5000"
+      - "50051:50051"
     depends_on:
       user_db:
         condition: service_healthy
@@ -49,17 +50,32 @@ services:
     ports:
       - "5001:5001"
     depends_on:
-      data_db:
-        condition: service_healthy
-      user_manager:
-        condition: service_healthy
+    - data_db
+    - user_manager
+    environment:
+      DATA_DB_HOST: ${DATA_DB_HOST}
+      DATA_DB_PORT: ${DATA_DB_PORT}
+      DATA_DB_NAME: ${DATA_DB_NAME}
+      DATA_DB_USER: ${DATA_DB_USER}
+      DATA_DB_PASSWORD: ${DATA_DB_PASSWORD}
+      USER_MANAGER_HOST: ${USER_MANAGER_HOST}
+      USER_MANAGER_GRPC_PORT: ${USER_MANAGER_GRPC_PORT}
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:5001/health || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
+
   adminer:
     image: adminer
     ports:
       - "8081:8080"
+    networks:
+      - user_network
+      - data_network
+networks:
+  user_network:
+  data_network:
