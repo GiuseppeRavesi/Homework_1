@@ -1,0 +1,105 @@
+{
+	"info": {
+		"_postman_id": "24b5654a-4e00-4df2-9f91-55d08fafe6f2",
+		"name": "User Manager API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50312968",
+		"_collection_link": "https://giusepperavesi-4787180.postman.co/workspace/Giuseppe-Ravesu's-Workspace~4a2a2a63-eb60-40e8-8d32-ca36aade26d1/collection/50312968-24b5654a-4e00-4df2-9f91-55d08fafe6f2?action=share&source=collection_link&creator=50312968"
+	},
+	"item": [
+		{
+			"name": "Register",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"email\": \"test@example.com\",\r\n  \"fiscal_code\": \"AAAAAA00A00A000A\",\r\n  \"bank_account\": \"DE1234567890\",\r\n  \"request_id\": \"cd5a76dd-b094-4cf3-a643-887776c5adb0\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:5000/register",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Exists",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/exists/test@example.com",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"exists",
+						"test@example.com"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/delete/test.user@example.com",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"delete",
+						"test.user@example.com"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Users",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"test.user@example.com\",\r\n    \"fiscal_code\": \"aaaaa333333\",\r\n    \"bank_account\": \"itssss2222344000\",\r\n    \"request_id\": \"e4a7647b-83d1-43d7-b00c-8241ae04c779\"\r\n}"
+				},
+				"url": {
+					"raw": "http://localhost:5000/users",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"users"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
