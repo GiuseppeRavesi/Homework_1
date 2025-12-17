@@ -3,6 +3,7 @@ import os
 import requests
 from datetime import datetime, timedelta
 from time import time
+from circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 
 class OpenSkyClient:
     def __init__(self, client_id=None, client_secret=None):
@@ -15,6 +16,7 @@ class OpenSkyClient:
         if not self.client_id or not self.client_secret:
             raise RuntimeError("OpenSky credentials not found in environment (CLIENT_ID, CLIENT_SECRET)")
         self.authenticate()
+        self.circuit_breaker = CircuitBreaker()
 
     def authenticate(self):
         payload = {
@@ -47,10 +49,12 @@ class OpenSkyClient:
         return {"Authorization": f"Bearer {self.token}"}
 
     def _call_api(self, path, params=None):
+        self.circuit_breaker.before_call()
         url = f"{self.api_url}{path}"
         try:
             r = requests.get(url, params=params, headers=self.get_headers(), timeout=30)
             if r.status_code == 200:
+                self.circuit_breaker.on_success()
                 return r.json()
             elif r.status_code == 401:
                 # token scaduto o revocato
@@ -65,6 +69,7 @@ class OpenSkyClient:
                 print(f"[OpenSky] API error {r.status_code}: {r.text}", flush=True)
                 return []
         except Exception as e:
+            self.circuit_breaker.on_failure()
             print(f"[OpenSky] Request error: {e}", flush=True)
             return []
 

@@ -20,3 +20,10 @@ CREATE TABLE IF NOT EXISTS flights (
 CREATE INDEX IF NOT EXISTS idx_flights_airport ON flights(airport_code);
 CREATE INDEX IF NOT EXISTS idx_flights_email ON flights(email);
 CREATE INDEX IF NOT EXISTS idx_flights_created_at ON flights(created_at);
+
+
+ALTER TABLE airports
+ADD COLUMN IF NOT EXISTS high_value INTEGER;
+
+ALTER TABLE airports
+ADD COLUMN IF NOT EXISTS low_value INTEGER;

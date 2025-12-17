@@ -33,6 +33,9 @@ services:
 
   user_manager:
     build: ./user_manager
+    networks:
+      - user_network
+      - shared_network
     ports:
       - "5000:5000"
       - "50051:50051"
@@ -47,6 +50,9 @@ services:
 
   data_collector:
     build: ./data_collector
+    networks:
+      - data_network
+      - shared_network
     ports:
       - "5001:5001"
     depends_on:
@@ -76,6 +82,9 @@ services:
     networks:
       - user_network
       - data_network
+      - shared_network
+
 networks:
   user_network:
   data_network:
+  shared_network:

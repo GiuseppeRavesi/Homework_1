@@ -7,8 +7,21 @@ from opensky_client import OpenSkyClient
 from database import fetch_user_airports, save_flight_record, get_connection
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from circuit_breaker import CircuitBreakerOpen
 
 app = Flask(__name__)
+
+def validate_thresholds(high_value, low_value):
+    if high_value is not None and high_value < 0:
+        raise ValueError("high_value must be >= 0")
+
+    if low_value is not None and low_value < 0:
+        raise ValueError("low_value must be >= 0")
+
+    if high_value is not None and low_value is not None:
+        if high_value <= low_value:
+            raise ValueError("high_value must be greater than low_value")
+
 
 # -------------------------
 #   CONFIGURAZIONE
@@ -50,7 +63,20 @@ def collect_flight_data():
         for airport in airports:
             print(f"[Scheduler] Recupero voli per {email} @ {airport}")
 
-            flights = opensky.get_flights_for_airport(airport)
+            try:
+                flights = opensky.get_flights_for_airport(airport)
+            except CircuitBreakerOpen:
+                print(
+                    f"[OpenSky] Circuit breaker OPEN → salto aeroporto {airport}",
+                    flush=True
+                )
+                continue
+            except Exception as e:
+                print(
+                    f"[OpenSky] Errore recupero voli per {airport}: {e}",
+                    flush=True
+                )
+                continue
 
             # --- Salvataggio partenze ---
             for f in flights["departures"]:
@@ -108,6 +134,13 @@ def add_airport():
 
     email = data.get("email")
     airport = data.get("airport_code", "").upper()
+    high_value = data.get("high_value")
+    low_value = data.get("low_value")
+
+    try:
+        validate_thresholds(high_value, low_value)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     if not email or not airport:
         return jsonify({"error": "email e airport_code richiesti"}), 400
@@ -119,9 +152,12 @@ def add_airport():
     conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO airports(email, airport_code) VALUES (%s, %s)",
-            (email, airport)
-        )
+                """
+                INSERT INTO airports (email, airport_code, high_value, low_value)
+                VALUES (%s, %s, %s, %s)
+                """,
+        (email, airport, high_value, low_value)
+)
         conn.commit()
     conn.close()
 
@@ -175,6 +211,53 @@ def delete_airport():
         "email": email,
         "airport": airport
     }), 200
+
+
+@app.route("/airports/preferences", methods=["PUT"])
+def update_airport_preferences():
+    data = request.get_json()
+
+    email = data.get("email")
+    airport = data.get("airport_code", "").upper()
+    high_value = data.get("high_value")
+    low_value = data.get("low_value")
+
+    if not email or not airport:
+        return jsonify({"error": "email e airport_code richiesti"}), 400
+
+    exists, _ = user_client.user_exists(email)
+    if not exists:
+        return jsonify({"error": "utente non esiste"}), 404
+
+    try:
+        validate_thresholds(high_value, low_value)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE airports
+            SET high_value=%s, low_value=%s
+            WHERE email=%s AND airport_code=%s
+            """,
+            (high_value, low_value, email, airport)
+        )
+        if cur.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "interesse non trovato"}), 404
+        conn.commit()
+    conn.close()
+
+    return jsonify({
+        "status": "ok",
+        "email": email,
+        "airport": airport,
+        "high_value": high_value,
+        "low_value": low_value
+    }), 200
+
 
 # ======================================
 #   RACCOLTA MANUALE
@@ -232,29 +315,57 @@ def flights_latest(airport):
     if not email:
         return jsonify({"error": "email obbligatoria"}), 400
 
+    airport = airport.upper()
+
     conn = get_connection()
     with conn.cursor() as cur:
+        # ultimo volo in PARTENZA
         cur.execute("""
-            SELECT flight_type, callsign, icao24, first_seen, last_seen, created_at
+            SELECT callsign, icao24, first_seen, last_seen, created_at
             FROM flights
-            WHERE email=%s AND airport_code=%s
+            WHERE email=%s AND airport_code=%s AND flight_type='departure'
             ORDER BY created_at DESC
             LIMIT 1
-        """, (email, airport.upper()))
-        row = cur.fetchone()
+        """, (email, airport))
+        dep = cur.fetchone()
+
+        # ultimo volo in ARRIVO
+        cur.execute("""
+            SELECT callsign, icao24, first_seen, last_seen, created_at
+            FROM flights
+            WHERE email=%s AND airport_code=%s AND flight_type='arrival'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (email, airport))
+        arr = cur.fetchone()
+
     conn.close()
 
-    if not row:
+    if not dep and not arr:
         return jsonify({"message": "nessun volo trovato"}), 404
 
-    return jsonify({
-        "flight_type": row[0],
-        "callsign": row[1],
-        "icao24": row[2],
-        "first_seen": row[3],
-        "last_seen": row[4],
-        "created_at": str(row[5])
-    }), 200
+    response = {"airport": airport, "email": email}
+
+    if dep:
+        response["latest_departure"] = {
+            "callsign": dep[0],
+            "icao24": dep[1],
+            "first_seen": dep[2],
+            "last_seen": dep[3],
+            "created_at": str(dep[4])
+        }
+
+    if arr:
+        response["latest_arrival"] = {
+            "callsign": arr[0],
+            "icao24": arr[1],
+            "first_seen": arr[2],
+            "last_seen": arr[3],
+            "created_at": str(arr[4])
+        }
+
+    return jsonify(response), 200
+
 
 
 # ======================================
