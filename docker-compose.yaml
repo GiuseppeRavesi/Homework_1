@@ -53,6 +53,7 @@ services:
     networks:
       - data_network
       - shared_network
+      - kafka_network
     ports:
       - "5001:5001"
     depends_on:
@@ -68,6 +69,8 @@ services:
       USER_MANAGER_GRPC_PORT: ${USER_MANAGER_GRPC_PORT}
       CLIENT_ID: ${CLIENT_ID}
       CLIENT_SECRET: ${CLIENT_SECRET}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: to-alert-system
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:5001/health || exit 1" ]
       interval: 10s
@@ -88,3 +91,5 @@ networks:
   user_network:
   data_network:
   shared_network:
+  kafka_network:
+    external: true

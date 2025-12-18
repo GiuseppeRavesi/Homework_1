@@ -8,6 +8,7 @@ from database import fetch_user_airports, save_flight_record, get_connection
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from circuit_breaker import CircuitBreakerOpen
+from kafka_producer import FlightEventProducer
 
 app = Flask(__name__)
 
@@ -30,6 +31,7 @@ COLLECTION_INTERVAL_HOURS = int(os.getenv("COLLECTION_INTERVAL_HOURS", 12))
 
 user_client = UserManagerClient()
 opensky = OpenSkyClient()
+event_producer = None
 
 
 # ============================================================
@@ -39,7 +41,11 @@ opensky = OpenSkyClient()
 def collect_flight_data():
     print("[Scheduler] Raccolta dati iniziata...")
 
-    # 1. Recupero lista email che hanno aeroporti
+
+    global event_producer
+    if event_producer is None:
+        event_producer = FlightEventProducer()
+        
     conn = get_connection()
     with conn.cursor() as cur:
         cur.execute("SELECT DISTINCT email FROM airports")
@@ -51,13 +57,11 @@ def collect_flight_data():
     total_saved = 0
 
     for email in emails:
-        # 2. Verifica utente via gRPC
         exists, _ = user_client.user_exists(email)
         if not exists:
             print(f"[Scheduler] Utente {email} non esiste più → ignorato")
             continue
 
-        # 3. Recupera aeroporti dell'utente
         airports = fetch_user_airports(email)
 
         for airport in airports:
@@ -105,6 +109,20 @@ def collect_flight_data():
                     origin_country=f.get("estDepartureAirport")
                 )
                 total_saved += 1
+
+            event = {
+                "email": email,
+                "airport": airport,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "departures": len(flights.get("departures", [])),
+                "arrivals": len(flights.get("arrivals", []))
+            }
+
+            try:
+                event_producer.send_event(event)
+                print("[Kafka] Evento inviato", flush=True)
+            except Exception as e:
+                print(f"[Kafka] Errore invio evento: {e}", flush=True)
 
     print(f"[Scheduler] Raccolta completata → {total_saved} nuovi record salvati")
     return total_saved

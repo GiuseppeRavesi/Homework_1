@@ -4,3 +4,4 @@ grpcio-tools
 requests
 psycopg2-binary
 APScheduler==3.10.4
+confluent-kafka==2.3.0
