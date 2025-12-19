@@ -5,6 +5,8 @@ services:
     networks:
       - kafka_network
       - homework_1_shared_network 
+    volumes:
+    - kafka_data:/var/lib/kafka/data
     environment:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_NODE_ID: 1
@@ -28,3 +30,6 @@ networks:
     external: true
   homework_1_shared_network:
     external: true
+
+volumes:
+  kafka_data:

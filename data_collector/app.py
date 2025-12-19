@@ -120,7 +120,10 @@ def collect_flight_data():
 
             try:
                 event_producer.send_event(event)
-                print("[Kafka] Evento inviato", flush=True)
+                print(
+                    f"[Kafka] Evento inviato → email={email}, airport={airport}, "
+                    f"dep={event['departures']}, arr={event['arrivals']}",
+                    flush=True)
             except Exception as e:
                 print(f"[Kafka] Errore invio evento: {e}", flush=True)
 

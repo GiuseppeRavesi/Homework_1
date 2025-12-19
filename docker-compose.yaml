@@ -7,6 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: users
     volumes:
+      - user_db_data:/var/lib/postgresql/data
       - ./database/user_db_init.sql:/docker-entrypoint-initdb.d/user_db_init.sql
     networks:
       - user_network
@@ -22,6 +23,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: flights
     volumes:
+      - data_db_data:/var/lib/postgresql/data    
       - ./database/data_db_init.sql:/docker-entrypoint-initdb.d/data_db_init.sql
     networks:
       - data_network
@@ -76,7 +78,56 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  alert_system:
+    build: ./alert_system
+    networks:
+      - kafka_network
+      - shared_network
+      - data_network
+    depends_on:
+      - data_db
+      - data_collector
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_ALERT_TOPIC: to-alert-system
+      KAFKA_NOTIFIER_TOPIC: to-notifier
+      DATA_DB_HOST: ${DATA_DB_HOST}
+      DATA_DB_PORT: ${DATA_DB_PORT}
+      DATA_DB_NAME: ${DATA_DB_NAME}
+      DATA_DB_USER: ${DATA_DB_USER}
+      DATA_DB_PASSWORD: ${DATA_DB_PASSWORD}
+  alert_notifier:
+    build: ./alert_notifier
+    networks:
+      - kafka_network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_NOTIFIER_TOPIC: to-notifier
 
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_USE_TLS: "true"
+
+
+  api_gateway:
+    build: ./infra/nginx
+    container_name: api_gateway
+    ports:
+      - "8080:80"
+    networks:
+      - shared_network
+    depends_on:
+      - user_manager
+      - data_collector
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   adminer:
     image: adminer
@@ -93,3 +144,7 @@ networks:
   shared_network:
   kafka_network:
     external: true
+
+volumes:
+  user_db_data:
+  data_db_data:

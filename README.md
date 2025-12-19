@@ -1,197 +1,193 @@
-# DSBD – Distributed Systems and Big Data
-## Microservizi per Gestione Utenti e Monitoraggio Traffico Aereo
+# DSBD – Sistemi Distribuiti e Big Data
+## Homework #2 – Estensioni: Circuit Breaker, Kafka, Alert System, API Gateway
 
----
+### Descrizione
+Questa versione del progetto estende il sistema di Homework #1 introducendo nuove funzionalità per migliorare la robustezza e l'efficienza del sistema distribuito.
 
-## Descrizione del Progetto
+#### Cosa cambia rispetto a Homework #1
+- **Circuit Breaker**: Protegge tutte le chiamate verso OpenSky Network.
+- **Message Broker Kafka**: Abilita comunicazione asincrona tra microservizi.
+- **Alert System**: Consumer Kafka che valuta le soglie (high/low) per utente/aeroporto.
+- **Alert Notifier**: Consumer Kafka che invia notifiche email via SMTP quando scatta un alert.
+- **API Gateway NGINX**: Punto di ingresso unico verso il sistema.
 
-Questo repository contiene l'implementazione di un sistema distribuito basato su microservizi containerizzati.
-L'applicazione consente di:
+Il sistema mantiene:
+- Database separati (Database-per-Service).
+- Isolamento tramite reti Docker dedicate.
+- Comunicazione interna via gRPC tra Data Collector e User Manager.
 
-- registrare e gestire utenti (User Manager)
-- permettere agli utenti di selezionare aeroporti di interesse
-- raccogliere periodicamente dati sui voli tramite OpenSky Network
-- memorizzare e analizzare i voli in arrivo/partenza (Data Collector)
+### Architettura ad Alto Livello
+#### Kafka
+Kafka introduce 2 topic principali:
+- `to-alert-system`: Pubblicato dal Data Collector al termine di una raccolta (scheduler/manuale), contiene i dati aggiornati `<email, airport, departures, arrivals, timestamp>`.
+- `to-notifier`: Pubblicato da Alert System quando rileva una soglia superata, contiene `<email, airport, condition>`.
 
-Il sistema espone API **REST** verso i client e utilizza **gRPC** per la comunicazione interna tra microservizi.
-Tutto è orchestrato tramite **Docker Compose**.
+#### Alert System
+- Consumer di `to-alert-system`.
+- Recupera da Data DB le soglie `high_value` / `low_value` associate a `(email, airport)`.
+- Se una soglia è violata, produce un messaggio su `to-notifier`.
 
-## Architettura ad Alto Livello
+#### Alert Notifier
+- Consumer di `to-notifier`.
+- Invia notifica via SMTP (email) con:
+  - To: `email`
+  - Subject: `airport`
+  - Body: `condition`
 
-L’applicazione è composta da due microservizi principali:
+#### API Gateway (NGINX)
+- Espone un singolo punto di ingresso (porta 8080).
+- Esegue reverse proxy verso:
+  - `/users/*` → User Manager (porta 5000)
+  - `/collector/*` → Data Collector (porta 5001)
 
-### **1. User Manager**
-- Gestisce l’intero ciclo di vita degli utenti (registrazione, verifica, cancellazione)
-- Implementa una politica **At-Most-Once** per prevenire registrazioni duplicate
-- Esporta API **REST** verso il client
-- Espone un servizio **gRPC** utilizzato internamente dal Data Collector per verificare l’esistenza degli utenti
-- Utilizza un database dedicato, isolato in rete Docker privata
+### API Principali
+#### Data Collector (porta 5001)
+Estende la gestione degli interessi aeroportuali introducendo i parametri:
+- `high_value` (soglia superiore)
+- `low_value` (soglia inferiore)
 
-### **2. Data Collector**
-- Gestisce la lista degli aeroporti di interesse associati a ciascun utente
-- Raccoglie ciclicamente i dati delle API pubbliche di **OpenSky Network**
-- Memorizza partenze e arrivi in un proprio database
-- Fornisce endpoint **REST** per interrogare e analizzare i dati salvati
-- Interagisce via **gRPC** con lo User Manager per validare gli utenti
+Vincoli:
+- Entrambi opzionali.
+- Se presenti entrambi: `high_value > low_value`.
 
-### **Isolamento e Comunicazione tra Servizi**
-- Ogni microservizio ha un **database isolato**, accessibile solo sulla rete Docker interna
-- I database **non sono esposti verso l’esterno**
-- La comunicazione diretta tra i due microservizi avviene esclusivamente tramite **gRPC**
-- Tutti i diagrammi (architetturali e di interazione) sono disponibili nella **relazione tecnica** allegata
+Nuove/aggiornate API:
+- `POST /airports` (ora accetta anche `high_value`, `low_value`)
+- `PUT /airports/preferences` (aggiorna soglie per un interesse esistente)
 
-## API Principali
+Le altre API di HW1 rimangono disponibili.
 
-Di seguito una panoramica sintetica delle API esposte dai due microservizi.
-I dettagli completi sono riportati nella relazione tecnica.
+### Setup e Deploy con Docker
+#### Prerequisiti
+- Docker
+- Docker Compose
 
----
+**Nota**: Kafka usa una rete Docker esterna (`kafka_network`). Se non esiste, va creata manualmente.
 
-### User Manager (porta 5000)
+#### Passi per l'Installazione
+1. Creare la rete Kafka (solo la prima volta):
+   ```bash
+   docker network create kafka_network
+   ```
 
-- `POST /register`
-  Registra un nuovo utente applicando la politica **At-Most-Once** (richiede un `request_id` univoco).
+2. Configurare l'ambiente:
+   Crea un file `.env` nella root (o aggiorna il tuo) con le variabili di HW1 + le nuove per HW2.
 
-- `GET /exists/<email>`
-  Verifica l'esistenza di un utente tramite query diretta al database.
+   Esempio minimo (HW2):
+   ```env
+   # --- DB Data Collector ---
+   DATA_DB_HOST=data_db
+   DATA_DB_PORT=5432
+   DATA_DB_NAME=flights
+   DATA_DB_USER=postgres
+   DATA_DB_PASSWORD=postgres
 
-- `DELETE /delete/<email>`
-  Cancella un utente dal sistema.
+   # --- User Manager (gRPC) ---
+   USER_MANAGER_HOST=user_manager
+   USER_MANAGER_GRPC_PORT=50051
 
-- `GET /users`
-  Restituisce la lista degli utenti registrati.
+   # --- OpenSky ---
+   CLIENT_ID=your_client_id
+   CLIENT_SECRET=your_client_secret
 
-- `GET /health`
-  Health check del servizio User Manager.
+   # --- Scheduler ---
+   COLLECTION_INTERVAL_HOURS=12
 
----
+   # --- Kafka ---
+   KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+   KAFKA_TOPIC_TO_ALERT=to-alert-system
+   KAFKA_TOPIC_TO_NOTIFIER=to-notifier
 
-### Data Collector (porta 5001)
+   # --- SMTP (Alert Notifier) ---
+   SMTP_HOST=smtp.example.com
+   SMTP_PORT=587
+   SMTP_USER=your_email@example.com
+   SMTP_PASSWORD=your_password_or_app_password
+   SMTP_FROM=your_email@example.com
+   SMTP_USE_TLS=true
+   ```
 
-- `POST /airports`  
-  Aggiunge un aeroporto di interesse per un utente esistente (validato via gRPC).
+   *(Le variabili effettive usate dai container dipendono dal docker-compose: assicurati che i nomi ENV dei servizi coincidano con quelli letti dal codice.)*
 
-- `DELETE /airports`  
-  Rimuove un interesse specifico usando query parameters: `email`, `airport_code`.
+3. Avvio del sistema:
+   ```bash
+   docker compose up --build
+   ```
 
-- `GET /airports/<email>`  
-  Elenca tutti gli aeroporti di interesse associati a un utente.
+#### Accesso tramite API Gateway (NGINX)
+Una volta attivo il gateway sulla porta 8080, puoi chiamare le API senza conoscere le porte interne:
 
-- `POST /collect`  
-  Avvia manualmente un ciclo di raccolta dati dai servizi OpenSky.
+- **User Manager**: `http://localhost:8080/users/...`
+- **Data Collector**: `http://localhost:8080/collector/...`
 
-- `GET /flights/<airport>`  
-  Restituisce i voli memorizzati per un dato aeroporto (filtrati per utente).
-
-- `GET /flights/<airport>/latest`  
-  Recupera l’ultimo volo salvato per un determinato aeroporto.
-
-- `GET /flights/<airport>/average?days=N`  
-  Calcola la media giornaliera dei voli negli ultimi `N` giorni.
-
-- `GET /health`
-  Health check del Data Collector.
-
-## Setup e Deploy con Docker
-
-I microservizi e i relativi database sono completamente containerizzati.
-È sufficiente disporre di **Docker** e **Docker Compose** per eseguire l'intero sistema.
-
----
-
-### Clonare il repository
-
+Esempi:
 ```bash
-git clone <URL_REPOSITORY>
-cd <NOME_CARTELLA_PROGETTO>
-```
----
+# Health User Manager
+curl http://localhost:8080/users/health
 
-### Configurare l'ambiente
-
-Creare un file `.env` nella root del progetto. Al suo interno vanno specificate le seguenti variabili:
-
-```bash
-# Credenziali e configurazione database
-DB_HOST=user_db
-DB_PORT=5432
-DB_NAME=users
-DB_USER=postgres
-DB_PASSWORD=postgres
-
-# Host servizi interni
-USER_MANAGER_HOST=user_manager
-DATA_COLLECTOR_HOST=data_collector
-
-# Credenziali OpenSky Network
-CLIENT_ID=your_client_id
-CLIENT_SECRET=your_client_secret
-
-# Intervallo raccolta dati (ore)
-COLLECTION_INTERVAL_HOURS=12
+# Health Data Collector
+curl http://localhost:8080/collector/health
 ```
 
-La relazione tecnica include una descrizione dettagliata di tutte le variabili supportate.
+### Testing Rapido della Pipeline Kafka (senza email)
+1. Registra utente (via gateway o porta diretta).
+2. Aggiungi aeroporto con soglie.
+3. Avvia raccolta manuale:
+   ```bash
+   curl -X POST http://localhost:8080/collector/collect
+   ```
+4. Verifica che Alert System produca alert su `to-notifier` (guardando i log di `alert_system`).
+5. (Opzionale) Verifica topic con console consumer dentro container Kafka:
+   ```bash
+   docker exec -it kafka kafka-console-consumer \
+     --bootstrap-server kafka:9092 \
+     --topic to-notifier \
+     --from-beginning
+   ```
 
-## 📂 Struttura del Repository
-
-La seguente struttura riassume l’organizzazione dei file principali del progetto:
-
+### Struttura del Repository (HW2)
+Oltre alla struttura HW1, sono stati aggiunti:
 ```
 Homework_1/
-├── user_manager/                    # Microservizio User Manager
-│   ├── app.py                       # API REST + server gRPC
-│   ├── grpc_definitions/            # File .proto e stub generati
-│   │   ├── __init__.py
-│   │   ├── user.proto
-│   │   ├── user_pb2.py
-│   │   └── user_pb2_grpc.py
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── data_collector/                  # Microservizio Data Collector
-│   ├── app.py                       # Entry point e API REST
-│   ├── opensky_client.py            # Integrazione con OpenSky Network
-│   ├── grpc_client.py               # Client gRPC verso User Manager
-│   ├── database.py                  # Accesso al database locale
-│   ├── grpc_definitions/            # Stub gRPC generati
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── database/                        # Script SQL inizializzazione DB
+├── user_manager/                  # HW1
+├── data_collector/                # HW1 + HW2 (CB + producer Kafka)
+├── database/                      # init SQL HW1/HW2
 │   ├── user_db_init.sql
 │   └── data_db_init.sql
 │
-├── docker-compose.yaml              # Orchestrazione dei microservizi
-├── README.md                        # Questo file
-└── .env.example                     # Esempio configurazione ambiente
+├── alert_system/                  # HW2 (consumer to-alert-system + producer to-notifier)
+│   ├── app.py
+│   ├── kafka_consumer.py
+│   ├── kafka_producer.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── alert_notifier/                # HW2 (consumer to-notifier + invio SMTP)
+│   ├── app.py            # oppure main.py (entrypoint)
+│   ├── smtp_notifier.py   # logica SMTP
+│   ├── kafka_consumer.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── infra/
+│   ├── nginx/                     # HW2 API Gateway
+│   │   ├── Dockerfile
+│   │   └── nginx.conf
+│   │
+│   └── kafka/                     # HW2 Kafka esterno
+│       └── docker-compose.yaml    # compose standalone del broker
+│
+├── docker-compose.yaml            # compose principale (microservizi + db + gateway)
+├── .env
+└── README.md
 ```
-## Testing
 
-Il sistema può essere testato tramite Postman, cURL o qualsiasi client HTTP.
+### Come Fermare il Sistema
+Per fermare e rimuovere i container:
+```bash
+docker compose down
+```
 
-### User Manager (porta 5000)
-- `POST /register` — registra un utente (politica At-Most-Once)
-- `GET /exists/<email>` — verifica se l'utente esiste
-- `DELETE /delete/<email>` — rimuove un utente
-- `GET /users` — elenca gli utenti registrati
-
-### Data Collector (porta 5001)
-- `POST /airports` — aggiunge un aeroporto di interesse
-- `DELETE /airports` — rimuove un interesse
-- `GET /airports/<email>` — elenca gli aeroporti associati a un utente
-- `POST /collect` — avvia la raccolta manuale dei voli
-- `GET /flights/<airport>` — restituisce i voli registrati
-- `GET /flights/<airport>/latest` — recupera l’ultimo volo
-- `GET /flights/<airport>/average` — calcola la media giornaliera degli ultimi N giorni
-
-Una descrizione più dettagliata delle sequenze di test è disponibile nella **relazione tecnica**.
-
-## Licenza
-
-Questo progetto è stato sviluppato come parte dell’insegnamento  
-**Distributed Systems and Big Data (LM-32)**  
-presso l’Università degli Studi di Catania.
-
-Il codice è fornito esclusivamente per scopi accademici ed esercitativi.  
-Non è destinato all’uso in produzione.
+Per fermare e rimuovere anche i volumi (perdita dati):
+```bash
+docker compose down -v
+```

@@ -28,5 +28,5 @@ class FlightEventProducer:
         )
         producer.poll(0)
         producer.flush()
-        print("[Kafka] Evento inviato", flush=True)
+        print("[Kafka] Evento inviato - sono kafka-producer.py", flush=True)
 
