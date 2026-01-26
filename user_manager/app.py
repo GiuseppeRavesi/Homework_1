@@ -7,7 +7,28 @@ from concurrent import futures
 
 from grpc_definitions import user_pb2, user_pb2_grpc
 
+import time
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from flask import Response
+
+
 app = Flask(__name__)
+
+SERVICE_NAME = os.getenv("SERVICE_NAME", "user_manager")
+NODE_NAME = os.getenv("NODE_NAME", "local")
+
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests handled by the service",
+    ["service", "node", "endpoint", "method", "result"]
+)
+
+LAST_HTTP_REQUEST_SECONDS = Gauge(
+    "last_http_request_seconds",
+    "Duration (seconds) of the last handled HTTP request",
+    ["service", "node", "endpoint", "method"]
+)
+
 
 # ----------------------------------
 # CONFIG DB
@@ -108,7 +129,54 @@ def start_grpc():
 # ----------------------------------
 # ENDPOINT REST
 # ----------------------------------
+
+def instrument(endpoint_name, method):
+    """
+    Minimal instrumentation:
+    - sets GAUGE for last request duration
+    - increments COUNTER with ok/error
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                resp = func(*args, **kwargs)
+                # Flask handlers can return (json, status) or Response
+                status_code = resp[1] if isinstance(resp, tuple) and len(resp) > 1 else 200
+                result = "ok" if 200 <= status_code < 400 else "error"
+                return resp
+            except Exception:
+                result = "error"
+                raise
+            finally:
+                elapsed = time.time() - start
+                LAST_HTTP_REQUEST_SECONDS.labels(
+                    service=SERVICE_NAME,
+                    node=NODE_NAME,
+                    endpoint=endpoint_name,
+                    method=method
+                ).set(elapsed)
+
+                HTTP_REQUESTS_TOTAL.labels(
+                    service=SERVICE_NAME,
+                    node=NODE_NAME,
+                    endpoint=endpoint_name,
+                    method=method,
+                    result=result
+                ).inc()
+        wrapper.__name__ = func.__name__
+        return wrapper
+    return decorator
+
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+
 @app.route("/register", methods=["POST"])
+@instrument("/register", "POST")
 def register():
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 415
@@ -147,10 +215,12 @@ def register():
     }), 201
 
 @app.route("/exists/<email>", methods=["GET"])
+@instrument("/exists/<email>", "GET")
 def exists(email):
     return jsonify({"exists": user_exists(email)})
 
 @app.route("/delete/<email>", methods=["DELETE"])
+@instrument("/delete/<email>", "DELETE")
 def delete(email):
     if  user_exists(email):
         delete_user(email)
@@ -159,6 +229,7 @@ def delete(email):
         return jsonify({"status": "not found", "email": email}), 404
 
 @app.route("/health", methods=["GET"])
+@instrument("/health", "GET")
 def health():
     try:
         cur = conn.cursor()
@@ -170,6 +241,7 @@ def health():
         return jsonify({"ok": False}), 503
 
 @app.route("/users", methods=["GET"])
+@instrument("/users", "GET")
 def list_users():
     cur = conn.cursor()
     cur.execute("SELECT email FROM users")

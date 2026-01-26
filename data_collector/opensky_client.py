@@ -29,7 +29,6 @@ class OpenSkyClient:
             r.raise_for_status()
             j = r.json()
             self.token = j.get("access_token")
-            # il campo expires_in è solitamente presente: ttl in secondi
             expires_in = j.get("expires_in", 3600)
             self.token_expires_at = int(time()) + int(expires_in) - 30
             print("[OpenSky] Token ottenuto, scade in", expires_in, "s", flush=True)
@@ -56,22 +55,32 @@ class OpenSkyClient:
             if r.status_code == 200:
                 self.circuit_breaker.on_success()
                 return r.json()
-            elif r.status_code == 401:
+            
+            if r.status_code == 401:
                 # token scaduto o revocato
                 self.authenticate()
                 r = requests.get(url, params=params, headers=self.get_headers(), timeout=30)
                 if r.status_code == 200:
+                    self.circuit_breaker.on_success()
                     return r.json()
-                return []
-            elif r.status_code == 404:
+                
+                self.circuit_breaker.on_failure()
+                raise RuntimeError(f"Unauthorized after re-authentication: {r.text}")
+            
+
+            if r.status_code == 404:
+                self.circuit_breaker.on_success()
                 return []
             else:
+                self.circuit_breaker.on_failure()
                 print(f"[OpenSky] API error {r.status_code}: {r.text}", flush=True)
-                return []
+                raise RuntimeError(f"API error {r.status_code}: {r.text}")
+        except CircuitBreakerOpen as cbo:
+            raise
         except Exception as e:
             self.circuit_breaker.on_failure()
-            print(f"[OpenSky] Request error: {e}", flush=True)
-            return []
+            print(f"[OpenSky] Exception during API call: {str(e)}", flush=True) 
+            raise e
 
     def get_departures(self, airport_icao, begin_timestamp=None, end_timestamp=None):
         if not begin_timestamp:

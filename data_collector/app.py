@@ -1,3 +1,4 @@
+import email
 from flask import Flask, request, jsonify
 import os
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,91 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from circuit_breaker import CircuitBreakerOpen
 from kafka_producer import FlightEventProducer
 
+import time
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from flask import Response
+from flask import g
+
+
 app = Flask(__name__)
+
+SERVICE_NAME = os.getenv("SERVICE_NAME", "data_collector")
+NODE_NAME = os.getenv("NODE_NAME", "local")
+
+# =========================
+# PROMETHEUS METRICS
+# =========================
+
+# HTTP layer (tutte le route)
+http_requests_total = Counter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["service", "node", "path", "method", "status"]
+)
+http_last_request_seconds = Gauge(
+    "http_last_request_seconds",
+    "Seconds spent handling the last HTTP request",
+    ["service", "node", "path", "method"]
+)
+
+# Scheduler / collection job
+collection_runs_total = Counter(
+    "collection_runs_total",
+    "Total number of collection runs (scheduler or manual)",
+    ["service", "node", "trigger"]  # trigger: scheduler|manual
+)
+collection_failures_total = Counter(
+    "collection_failures_total",
+    "Total number of collection runs failed",
+    ["service", "node", "trigger"]
+)
+collection_last_run_seconds = Gauge(
+    "collection_last_run_seconds",
+    "Seconds spent in the last collection run",
+    ["service", "node", "trigger"]
+)
+collection_records_saved_last = Gauge(
+    "collection_records_saved_last",
+    "Number of records saved in the last collection run",
+    ["service", "node", "trigger"]
+)
+
+# OpenSky external calls
+opensky_calls_total = Counter(
+    "opensky_calls_total",
+    "Total OpenSky calls",
+    ["service", "node", "result"]  # ok|error|cb_open
+)
+opensky_last_call_seconds = Gauge(
+    "opensky_last_call_seconds",
+    "Seconds spent in the last OpenSky call",
+    ["service", "node"]
+)
+
+
+@app.before_request
+def _metrics_before_request():
+    g._req_start_time = time.time()
+
+@app.after_request
+def _metrics_after_request(response):
+    try:
+        elapsed = time.time() - getattr(g, "_req_start_time", time.time())
+        path = request.path
+        method = request.method
+        status = str(response.status_code)
+
+        http_last_request_seconds.labels(
+            service=SERVICE_NAME, node=NODE_NAME, path=path, method=method
+        ).set(elapsed)
+
+        http_requests_total.labels(
+            service=SERVICE_NAME, node=NODE_NAME, path=path, method=method, status=status
+        ).inc()
+    except Exception:
+        pass
+    return response
+
 
 def validate_thresholds(high_value, low_value):
     if high_value is not None and high_value < 0:
@@ -38,96 +123,126 @@ event_producer = None
 #   FUNZIONE PRINCIPALE DI RACCOLTA DATI (scheduler + manuale)
 # ============================================================
 
-def collect_flight_data():
+def collect_flight_data(trigger="scheduler"):
     print("[Scheduler] Raccolta dati iniziata...")
-
-
-    global event_producer
-    if event_producer is None:
-        event_producer = FlightEventProducer()
-        
-    conn = get_connection()
-    with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT email FROM airports")
-        emails = [r[0] for r in cur.fetchall()]
-    conn.close()
-
-    print(f"[Scheduler] Trovati {len(emails)} utenti con aeroporti")
-
+    collection_runs_total.labels(service=SERVICE_NAME, node=NODE_NAME, trigger=trigger).inc()
+    job_start = time.time()
     total_saved = 0
 
-    for email in emails:
-        exists, _ = user_client.user_exists(email)
-        if not exists:
-            print(f"[Scheduler] Utente {email} non esiste più → ignorato")
-            continue
+    try:
+        global event_producer
+        if event_producer is None:
+            event_producer = FlightEventProducer()
+            
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT email FROM airports")
+            emails = [r[0] for r in cur.fetchall()]
+        conn.close()
 
-        airports = fetch_user_airports(email)
+        print(f"[Scheduler] Trovati {len(emails)} utenti con aeroporti")
 
-        for airport in airports:
-            print(f"[Scheduler] Recupero voli per {email} @ {airport}")
-
-            try:
-                flights = opensky.get_flights_for_airport(airport)
-            except CircuitBreakerOpen:
-                print(
-                    f"[OpenSky] Circuit breaker OPEN → salto aeroporto {airport}",
-                    flush=True
-                )
-                continue
-            except Exception as e:
-                print(
-                    f"[OpenSky] Errore recupero voli per {airport}: {e}",
-                    flush=True
-                )
+        for email in emails:
+            exists, _ = user_client.user_exists(email)
+            if not exists:
+                print(f"[Scheduler] Utente {email} non esiste più → ignorato")
                 continue
 
-            # --- Salvataggio partenze ---
-            for f in flights["departures"]:
-                save_flight_record(
-                    email=email,
-                    airport_code=airport,
-                    flight_type="departure",
-                    callsign=f.get("callsign"),
-                    icao24=f.get("icao24"),
-                    first_seen=f.get("firstSeen"),
-                    last_seen=f.get("lastSeen"),
-                    origin_country=f.get("estDepartureAirport")
-                )
-                total_saved += 1
+            airports = fetch_user_airports(email)
 
-            # --- Salvataggio arrivi ---
-            for f in flights["arrivals"]:
-                save_flight_record(
-                    email=email,
-                    airport_code=airport,
-                    flight_type="arrival",
-                    callsign=f.get("callsign"),
-                    icao24=f.get("icao24"),
-                    first_seen=f.get("firstSeen"),
-                    last_seen=f.get("lastSeen"),
-                    origin_country=f.get("estDepartureAirport")
-                )
-                total_saved += 1
+            for airport in airports:
+                print(f"[Scheduler] Recupero voli per {email} @ {airport}")
 
-            event = {
-                "email": email,
-                "airport": airport,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "departures": len(flights.get("departures", [])),
-                "arrivals": len(flights.get("arrivals", []))
-            }
+                opensky_start = time.time()
+                try:
+                    flights = opensky.get_flights_for_airport(airport)
 
-            try:
-                event_producer.send_event(event)
-                print(
-                    f"[Kafka] Evento inviato → email={email}, airport={airport}, "
-                    f"dep={event['departures']}, arr={event['arrivals']}",
-                    flush=True)
-            except Exception as e:
-                print(f"[Kafka] Errore invio evento: {e}", flush=True)
+                    opensky_calls_total.labels(
+                        service=SERVICE_NAME, node=NODE_NAME, result="ok"
+                    ).inc()
 
-    print(f"[Scheduler] Raccolta completata → {total_saved} nuovi record salvati")
+                except CircuitBreakerOpen:
+                    opensky_calls_total.labels(
+                        service=SERVICE_NAME, node=NODE_NAME, result="cb_open"
+                    ).inc()
+
+                    print(
+                        f"[OpenSky] Circuit breaker OPEN → salto aeroporto {airport}",
+                        flush=True
+                    )
+                    continue
+
+                except Exception as e:
+                    opensky_calls_total.labels(
+                        service=SERVICE_NAME, node=NODE_NAME, result="error"
+                    ).inc()
+
+                    print(
+                        f"[OpenSky] Errore recupero voli per {airport}: {e}",
+                        flush=True
+                    )
+                    continue
+
+                finally:
+                    opensky_last_call_seconds.labels(
+                        service=SERVICE_NAME, node=NODE_NAME
+                    ).set(time.time() - opensky_start)
+
+
+                # --- Salvataggio partenze ---
+                for f in flights["departures"]:
+                    save_flight_record(
+                        email=email,
+                        airport_code=airport,
+                        flight_type="departure",
+                        callsign=f.get("callsign"),
+                        icao24=f.get("icao24"),
+                        first_seen=f.get("firstSeen"),
+                        last_seen=f.get("lastSeen"),
+                        origin_country=f.get("estDepartureAirport")
+                    )
+                    total_saved += 1
+
+                # --- Salvataggio arrivi ---
+                for f in flights["arrivals"]:
+                    save_flight_record(
+                        email=email,
+                        airport_code=airport,
+                        flight_type="arrival",
+                        callsign=f.get("callsign"),
+                        icao24=f.get("icao24"),
+                        first_seen=f.get("firstSeen"),
+                        last_seen=f.get("lastSeen"),
+                        origin_country=f.get("estDepartureAirport")
+                    )
+                    total_saved += 1
+
+                event = {
+                    "email": email,
+                    "airport": airport,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "departures": len(flights.get("departures", [])),
+                    "arrivals": len(flights.get("arrivals", []))
+                }
+
+                try:
+                    event_producer.send_event(event)
+                    print(
+                        f"[Kafka] Evento inviato → email={email}, airport={airport}, "
+                        f"dep={event['departures']}, arr={event['arrivals']}",
+                        flush=True)
+                except Exception as e:
+                    print(f"[Kafka] Errore invio evento: {e}", flush=True)
+
+        print(f"[Scheduler] Raccolta completata → {total_saved} nuovi record salvati")
+    except Exception as e:
+        collection_failures_total.labels(service=SERVICE_NAME, node=NODE_NAME, trigger=trigger).inc()
+        print(f"[Scheduler] Errore durante la raccolta: {e}", flush=True)
+        raise
+    finally:    
+        collection_last_run_seconds.labels(service=SERVICE_NAME, node=NODE_NAME, trigger=trigger).set(time.time() - job_start)
+        collection_records_saved_last.labels(service=SERVICE_NAME, node=NODE_NAME, trigger=trigger).set(total_saved)
+
     return total_saved
 
 
@@ -144,6 +259,9 @@ def health():
 def root():
     return jsonify({"service": "data_collector", "status": "running"}), 200
 
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 # ======================================
 #   GESTIONE INTERESSI (airports)
@@ -286,7 +404,7 @@ def update_airport_preferences():
 
 @app.route("/collect", methods=["POST"])
 def collect_manual():
-    saved = collect_flight_data()
+    saved = collect_flight_data(trigger="manual")
     return jsonify({"saved": saved}), 200
 
 

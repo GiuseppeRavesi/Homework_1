@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: dsbd-ns
+type: Opaque
+stringData:
+  # --- DB passwords ---
+  DATA_DB_PASSWORD: "postgres"
+  POSTGRES_PASSWORD: "postgres"
+
+  # --- OpenSky secret ---
+  CLIENT_SECRET: "ZmSxcpGAPa2CCoBJ00wIeoyMZdX5y1NV"
+
+  # --- SMTP password ---
+  SMTP_PASSWORD: "xxxxxxxxxxxx"
