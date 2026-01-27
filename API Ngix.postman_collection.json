@@ -1,0 +1,424 @@
+{
+  "info": {
+    "_postman_id": "3a8ebd5c-fe45-45b4-8b9d-d942aaa0bf64",
+    "name": "API Ngix",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "50312968",
+    "_collection_link": "https://go.postman.co/collection/50312968-3a8ebd5c-fe45-45b4-8b9d-d942aaa0bf64?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "users/health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/users/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "users/metrics",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/users/metrics",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "metrics"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "users/register",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"pepperavesi28@gmail.com\",\r\n  \"fiscal_code\": \"RSSGPP99H28C351R\",\r\n  \"bank_account\": \"IT60X0542811101000000123456\",\r\n  \"request_id\": \"550e8400-e29b-41c4-a716-446655440000\"\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/users/register",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "register"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "users/exists/email",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/users/exists/pepperavesi28@gmail.com",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "exists",
+            "pepperavesi28@gmail.com"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "users/users",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/users/users",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "users"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "users/delete/email",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/users/delete/pepperavesi28@gmail.com",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "users",
+            "delete",
+            "pepperavesi28@gmail.com"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/health",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"pepperavesi28@gmail.com\",\r\n  \"fiscal_code\": \"RSSGPP99H28C351R\",\r\n  \"bank_account\": \"IT60X0542811101000000123456\",\r\n  \"request_id\": \"550e8400-e29b-41c4-a716-446655440000\"\r\n}\r\n"
+        },
+        "url": {
+          "raw": "http://localhost:8080/collector/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/metrics",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/collector/metrics",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "metrics"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/airports",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"pepperavesi28@gmail.com\",\r\n  \"airport_code\": \"LIRF\",\r\n  \"high_value\": 5,\r\n  \"low_value\": 1\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/collector/airports",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "airports"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/airports/email",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/collector/airports/pepperavesi28@gmail.com",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "airports",
+            "pepperavesi28@gmail.com"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/airports/preferences",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "PUT",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"pepperavesi28@gmail.com\",\r\n  \"airport_code\": \"LIRF\",\r\n  \"high_value\": 2,\r\n  \"low_value\": 1\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/collector/airports/preferences",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "airports",
+            "preferences"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/collect",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/collector/collect",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "collect"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/flights/LIRF",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/collector/flights/LIRF?email=pepperavesi28@gmail.com",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "flights",
+            "LIRF"
+          ],
+          "query": [
+            {
+              "key": "email",
+              "value": "pepperavesi28@gmail.com"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/flights/LIRF/latest",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/collector/flights/LIRF/latest?email=pepperavesi28@gmail.com",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "flights",
+            "LIRF",
+            "latest"
+          ],
+          "query": [
+            {
+              "key": "email",
+              "value": "pepperavesi28@gmail.com"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "collector/flights/LIRF/average",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/collector/flights/LIRF/average?email=pepperavesi28@gmail.com&days=7",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "collector",
+            "flights",
+            "LIRF",
+            "average"
+          ],
+          "query": [
+            {
+              "key": "email",
+              "value": "pepperavesi28@gmail.com"
+            },
+            {
+              "key": "days",
+              "value": "7"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
