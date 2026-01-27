@@ -25,8 +25,8 @@ data:
   # --- SMTP ---
   SMTP_HOST: "smtp.gmail.com"
   SMTP_PORT: "587"
-  SMTP_USER: "example@gmail.com"
-  SMTP_FROM: "example@gmail.com"
+  SMTP_USER: "pepperavesi28@gmail.com"
+  SMTP_FROM: "pepperavesi28@gmail.com"
   SMTP_USE_TLS: "true"
 
   # --- Postgres DB names ---

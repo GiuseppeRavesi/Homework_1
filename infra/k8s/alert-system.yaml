@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-system
+  namespace: dsbd-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-system
+  template:
+    metadata:
+      labels:
+        app: alert-system
+    spec:
+      containers:
+        - name: alert-system
+          image: alert-system:hw3
+          imagePullPolicy: IfNotPresent
+
+          # server metriche prometheus_client
+          ports:
+            - name: metrics
+              containerPort: 8000
+
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+
+          env:
+            - name: SERVICE_NAME
+              value: "alert_system"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: METRICS_PORT
+              value: "8000"
+
+            - name: DATA_DB_HOST
+              value: "data-db"
+            - name: DATA_DB_PORT
+              value: "5432"
+
+            # Kafka bootstrap interno
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+
+          #  TCP sul server metriche
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-system
+  namespace: dsbd-ns
+spec:
+  selector:
+    app: alert-system
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000

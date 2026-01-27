@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 def send_email(to_email, subject, body):
     host = os.getenv("SMTP_HOST")
     port = int(os.getenv("SMTP_PORT"))
-    username = os.getenv("SMTP_USERNAME")
+    username = os.getenv("SMTP_USER")
     password = os.getenv("SMTP_PASSWORD")
     sender = os.getenv("SMTP_FROM")
     use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"

@@ -1,0 +1,238 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-db-init-sql
+  namespace: dsbd-ns
+data:
+  01_user_db_init.sql: |
+      CREATE TABLE IF NOT EXISTS users (
+        email TEXT PRIMARY KEY,
+        fiscal_code TEXT,
+        bank_account TEXT);
+      CREATE TABLE IF NOT EXISTS processed_requests (
+        request_id VARCHAR(255) PRIMARY KEY
+      );
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-db-init-sql
+  namespace: dsbd-ns
+data:
+  01_data_db_init.sql: |
+    CREATE TABLE IF NOT EXISTS airports (
+    id SERIAL PRIMARY KEY,
+    email TEXT NOT NULL,
+    airport_code TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS flights (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        airport_code TEXT NOT NULL,
+        flight_type TEXT NOT NULL,        
+        callsign TEXT,
+        icao24 TEXT,
+        first_seen BIGINT,                
+        last_seen BIGINT,                
+        origin_country TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_flights_airport ON flights(airport_code);
+    CREATE INDEX IF NOT EXISTS idx_flights_email ON flights(email);
+    CREATE INDEX IF NOT EXISTS idx_flights_created_at ON flights(created_at);
+
+
+    ALTER TABLE airports
+    ADD COLUMN IF NOT EXISTS high_value INTEGER;
+
+    ALTER TABLE airports
+    ADD COLUMN IF NOT EXISTS low_value INTEGER;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-db
+  namespace: dsbd-ns
+  labels:
+    app: user-db
+spec:
+  ports:
+    - port: 5432
+      name: postgres
+  clusterIP: None
+  selector:
+    app: user-db
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: user-db
+  namespace: dsbd-ns
+spec:
+  serviceName: "user-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-db
+  template:
+    metadata:
+      labels:
+        app: user-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: POSTGRES_DB_USER
+            - name: POSTGRES_USER
+              value: "postgres"
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: user-db-data
+              mountPath: /var/lib/postgresql/data
+            - name: user-db-init
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            periodSeconds: 10
+            failureThreshold: 60
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: user-db-init
+          configMap:
+            name: user-db-init-sql
+  volumeClaimTemplates:
+    - metadata:
+        name: user-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-db
+  namespace: dsbd-ns
+  labels:
+    app: data-db
+spec:
+  ports:
+    - port: 5432
+      name: postgres
+  clusterIP: None
+  selector:
+    app: data-db
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: data-db
+  namespace: dsbd-ns
+spec:
+  serviceName: "data-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-db
+  template:
+    metadata:
+      labels:
+        app: data-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: POSTGRES_DB_DATA
+            - name: POSTGRES_USER
+              value: "postgres"
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: data-db-data
+              mountPath: /var/lib/postgresql/data
+            - name: data-db-init
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            periodSeconds: 10
+            failureThreshold: 60
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d ${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: data-db-init
+          configMap:
+            name: data-db-init-sql
+  volumeClaimTemplates:
+    - metadata:
+        name: data-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

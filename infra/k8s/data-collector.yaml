@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-collector
+  namespace: dsbd-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-collector
+  template:
+    metadata:
+      labels:
+        app: data-collector
+    spec:
+      containers:
+        - name: data-collector
+          image: data-collector:hw3
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 5001
+
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+
+          env:
+            - name: SERVICE_NAME
+              value: "data_collector"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+            # Porta del server Flask nel container
+            - name: LISTEN_PORT
+              value: "5001"
+
+            - name: USER_MANAGER_HOST
+              value: "user-manager"
+            - name: USER_MANAGER_GRPC_PORT
+              value: "50051"
+            - name: USER_MANAGER_PORT
+              value: "50051"
+
+            - name: DATA_DB_HOST
+              value: "data-db"
+            - name: DATA_DB_PORT
+              value: "5432"
+
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-collector
+  namespace: dsbd-ns
+spec:
+  selector:
+    app: data-collector
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 5001
+      targetPort: 5001
