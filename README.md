@@ -1,193 +1,318 @@
-# DSBD – Sistemi Distribuiti e Big Data
-## Homework #2 – Estensioni: Circuit Breaker, Kafka, Alert System, API Gateway
+# DSBD – Sistemi Distribuiti e Big Data  
+## Homework #3 – Kubernetes, Kafka, Alerting, Observability e API Gateway
 
-### Descrizione
-Questa versione del progetto estende il sistema di Homework #1 introducendo nuove funzionalità per migliorare la robustezza e l'efficienza del sistema distribuito.
+---
 
-#### Cosa cambia rispetto a Homework #1
-- **Circuit Breaker**: Protegge tutte le chiamate verso OpenSky Network.
-- **Message Broker Kafka**: Abilita comunicazione asincrona tra microservizi.
-- **Alert System**: Consumer Kafka che valuta le soglie (high/low) per utente/aeroporto.
-- **Alert Notifier**: Consumer Kafka che invia notifiche email via SMTP quando scatta un alert.
-- **API Gateway NGINX**: Punto di ingresso unico verso il sistema.
+## Descrizione
 
-Il sistema mantiene:
-- Database separati (Database-per-Service).
-- Isolamento tramite reti Docker dedicate.
-- Comunicazione interna via gRPC tra Data Collector e User Manager.
+Questa versione del progetto migra l’intero sistema sviluppato in Homework #1 e Homework #2 da **Docker Compose a Kubernetes**, introducendo un’architettura **cloud-native**, osservabile e resiliente.
 
-### Architettura ad Alto Livello
-#### Kafka
-Kafka introduce 2 topic principali:
-- `to-alert-system`: Pubblicato dal Data Collector al termine di una raccolta (scheduler/manuale), contiene i dati aggiornati `<email, airport, departures, arrivals, timestamp>`.
-- `to-notifier`: Pubblicato da Alert System quando rileva una soglia superata, contiene `<email, airport, condition>`.
+Il sistema è ora distribuito su un **cluster Kubernetes (Kind)** e utilizza primitive Kubernetes standard (Deployment, StatefulSet, Service, ConfigMap, Secret, Ingress) per il deploy e la gestione dei microservizi.
 
-#### Alert System
-- Consumer di `to-alert-system`.
-- Recupera da Data DB le soglie `high_value` / `low_value` associate a `(email, airport)`.
-- Se una soglia è violata, produce un messaggio su `to-notifier`.
+---
 
-#### Alert Notifier
-- Consumer di `to-notifier`.
-- Invia notifica via SMTP (email) con:
-  - To: `email`
-  - Subject: `airport`
-  - Body: `condition`
+## Cosa cambia rispetto a Homework #2
 
-#### API Gateway (NGINX)
-- Espone un singolo punto di ingresso (porta 8080).
-- Esegue reverse proxy verso:
-  - `/users/*` → User Manager (porta 5000)
-  - `/collector/*` → Data Collector (porta 5001)
+- **Migrazione completa a Kubernetes**
+  - Tutti i servizi sono deployati tramite manifest YAML.
+  - Database e Kafka gestiti tramite StatefulSet con volumi persistenti.
+- **Ingress Controller (NGINX)**
+  - Punto di ingresso unico al sistema.
+  - Routing HTTP verso i microservizi applicativi.
+- **Prometheus**
+  - Raccolta centralizzata delle metriche.
+  - Esposizione endpoint `/metrics` per ogni microservizio.
+- **Configurazione centralizzata**
+  - `ConfigMap` per configurazioni non sensibili.
+  - `Secret` per credenziali (DB, SMTP, ecc.).
+- **Persistenza dei dati**
+  - Volumi Kubernetes per database e Kafka.
+- **Osservabilità**
+  - Metriche custom su Kafka, DB, HTTP, Alerting.
 
-### API Principali
-#### Data Collector (porta 5001)
-Estende la gestione degli interessi aeroportuali introducendo i parametri:
-- `high_value` (soglia superiore)
-- `low_value` (soglia inferiore)
+---
 
-Vincoli:
-- Entrambi opzionali.
-- Se presenti entrambi: `high_value > low_value`.
+## Architettura ad Alto Livello
 
-Nuove/aggiornate API:
-- `POST /airports` (ora accetta anche `high_value`, `low_value`)
-- `PUT /airports/preferences` (aggiorna soglie per un interesse esistente)
+### Panoramica
 
-Le altre API di HW1 rimangono disponibili.
+```
+Client
+  ↓
+[ Ingress NGINX ]
+  ↓
+  ├─→ User Manager (REST + gRPC)
+  │
+  └─→ Data Collector (REST + Scheduler)
+         ↓
+      Kafka
+         ↓
+      ├─→ Alert System
+      │      ↓
+      └─→ Alert Notifier (SMTP)
+```
 
-### Setup e Deploy con Docker
-#### Prerequisiti
+
+---
+
+## Kafka
+
+Kafka opera in **modalità KRaft (senza ZooKeeper)** ed è deployato come **StatefulSet**.
+
+### Topic principali
+- **`to-alert-system`**
+  - Prodotto da Data Collector.
+  - Contiene:
+    `<email, airport, departures, arrivals, timestamp>`
+- **`to-notifier`**
+  - Prodotto da Alert System.
+  - Contiene:
+    `<email, airport, condition>`
+
+---
+
+## Alert System
+
+- Consumer Kafka (`to-alert-system`).
+- Recupera le soglie `(high_value, low_value)` dal **Data DB**.
+- Valuta le condizioni:
+  - superamento soglia alta
+  - superamento soglia bassa
+- Produce un evento su `to-notifier` quando una soglia è violata.
+- Espone metriche Prometheus:
+  - messaggi Kafka consumati
+  - query DB
+  - alert generati
+
+---
+
+## Alert Notifier
+
+- Consumer Kafka (`to-notifier`).
+- Invia notifiche email via **SMTP**.
+- Configurazione SMTP fornita tramite `ConfigMap` + `Secret`.
+- Gestisce errori di:
+  - autenticazione SMTP
+  - destinatario inesistente
+- Espone metriche Prometheus:
+  - email inviate
+  - errori SMTP
+
+---
+
+## API Gateway – Ingress NGINX
+
+Il sistema espone **un solo punto di ingresso HTTP** tramite Ingress:
+
+| Path | Servizio |
+|-----|---------|
+| `/users/*` | User Manager |
+| `/collector/*` | Data Collector |
+| `/metrics` | Prometheus (UI) |
+
+---
+
+## API Principali
+
+### User Manager
+- `GET /users/health`
+- `POST /users/register`
+- `POST /users/login`
+
+### Data Collector
+- `GET /collector/health`
+- `POST /collector/airports`
+- `PUT /collector/airports/preferences`
+- `POST /collector/collect`
+
+Le API di HW1 e HW2 sono pienamente supportate.
+
+---
+
+## Osservabilità – Prometheus
+
+Ogni microservizio espone `/metrics` in formato Prometheus.
+
+Metriche incluse:
+- HTTP requests
+- Kafka produced/consumed messages
+- DB queries
+- Alert generati
+- Email inviate
+- Tempo di elaborazione
+
+Prometheus è accessibile via Ingress:
+
+```text
+http://localhost/metrics
+```
+
+---
+
+## Setup e Deploy con Kubernetes (Kind)
+
+### Prerequisiti
+
 - Docker
-- Docker Compose
+- Kind
+- kubectl
 
-**Nota**: Kafka usa una rete Docker esterna (`kafka_network`). Se non esiste, va creata manualmente.
+### Avvio del Cluster
 
-#### Passi per l'Installazione
-1. Creare la rete Kafka (solo la prima volta):
-   ```bash
-   docker network create kafka_network
-   ```
+```bash
+kind create cluster --name dsbd-cluster
+```
 
-2. Configurare l'ambiente:
-   Crea un file `.env` nella root (o aggiorna il tuo) con le variabili di HW1 + le nuove per HW2.
+Verifica:
 
-   Esempio minimo (HW2):
-   ```env
-   # --- DB Data Collector ---
-   DATA_DB_HOST=data_db
-   DATA_DB_PORT=5432
-   DATA_DB_NAME=flights
-   DATA_DB_USER=postgres
-   DATA_DB_PASSWORD=postgres
+```bash
+kubectl get nodes
+```
 
-   # --- User Manager (gRPC) ---
-   USER_MANAGER_HOST=user_manager
-   USER_MANAGER_GRPC_PORT=50051
+### Installazione Ingress Controller
 
-   # --- OpenSky ---
-   CLIENT_ID=your_client_id
-   CLIENT_SECRET=your_client_secret
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.6/deploy/static/provider/kind/deploy.yaml
+```
 
-   # --- Scheduler ---
-   COLLECTION_INTERVAL_HOURS=12
+Attendere che il controller sia Running.
 
-   # --- Kafka ---
-   KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-   KAFKA_TOPIC_TO_ALERT=to-alert-system
-   KAFKA_TOPIC_TO_NOTIFIER=to-notifier
+### Deploy del Sistema
 
-   # --- SMTP (Alert Notifier) ---
-   SMTP_HOST=smtp.example.com
-   SMTP_PORT=587
-   SMTP_USER=your_email@example.com
-   SMTP_PASSWORD=your_password_or_app_password
-   SMTP_FROM=your_email@example.com
-   SMTP_USE_TLS=true
-   ```
+Applicare i manifest nell’ordine corretto:
 
-   *(Le variabili effettive usate dai container dipendono dal docker-compose: assicurati che i nomi ENV dei servizi coincidano con quelli letti dal codice.)*
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/app-config.yaml
+kubectl apply -f k8s/app-secrets.yaml
 
-3. Avvio del sistema:
-   ```bash
-   docker compose up --build
-   ```
+kubectl apply -f k8s/database.yaml
+kubectl apply -f k8s/kafka.yaml
 
-#### Accesso tramite API Gateway (NGINX)
-Una volta attivo il gateway sulla porta 8080, puoi chiamare le API senza conoscere le porte interne:
+kubectl apply -f k8s/user-manager.yaml
+kubectl apply -f k8s/data-collector.yaml
+kubectl apply -f k8s/alert-system.yaml
+kubectl apply -f k8s/alert-notifier.yaml
 
-- **User Manager**: `http://localhost:8080/users/...`
-- **Data Collector**: `http://localhost:8080/collector/...`
+kubectl apply -f k8s/prometheus.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+Verifica:
+
+```bash
+kubectl get pods -n dsbd-ns
+```
+
+---
+
+## Accesso dal Browser / Postman
+
+Per esporre l'Ingress su macchina locale:
+
+```bash
+kubectl port-forward -n ingress-nginx deploy/ingress-nginx-controller 8080:80
+```
+```
 
 Esempi:
-```bash
-# Health User Manager
-curl http://localhost:8080/users/health
 
-# Health Data Collector
+```bash
+curl http://localhost:8080/users/health
 curl http://localhost:8080/collector/health
 ```
 
-### Testing Rapido della Pipeline Kafka (senza email)
-1. Registra utente (via gateway o porta diretta).
-2. Aggiungi aeroporto con soglie.
-3. Avvia raccolta manuale:
-   ```bash
-   curl -X POST http://localhost:8080/collector/collect
-   ```
-4. Verifica che Alert System produca alert su `to-notifier` (guardando i log di `alert_system`).
-5. (Opzionale) Verifica topic con console consumer dentro container Kafka:
-   ```bash
-   docker exec -it kafka kafka-console-consumer \
-     --bootstrap-server kafka:9092 \
-     --topic to-notifier \
-     --from-beginning
-   ```
+---
 
-### Struttura del Repository (HW2)
-Oltre alla struttura HW1, sono stati aggiunti:
+## Testing della Pipeline Kafka
+
+1. Registrare un utente.
+2. Aggiungere un aeroporto con soglie.
+3. Avviare una raccolta manuale:
+
+```bash
+curl -X POST http://localhost:8080/collector/collect
+```
+
+Verificare:
+- log di alert-system
+- invio email da alert-notifier
+- metriche Prometheus
+
+---
+
+## Persistenza dei Dati
+
+Database e Kafka utilizzano `PersistentVolumeClaim`.
+
+I dati persistono anche se:
+- i pod vengono riavviati
+- il cluster viene fermato e riavviato
+
+---
+
+## Come Fermare / Riavviare il Sistema
+
+### Fermare il cluster (senza perdere dati)
+
+```bash
+docker stop $(kind get nodes --name dsbd-cluster)
+```
+
+### Riavviare il cluster
+
+```bash
+docker start $(kind get nodes --name dsbd-cluster)
+```
+
+### Eliminare completamente il cluster (perdita dati)
+
+```bash
+kind delete cluster --name dsbd-cluster
+```
+
+---
+
+## Struttura del Repository (HW3)
+
 ```
 Homework_1/
-├── user_manager/                  # HW1
-├── data_collector/                # HW1 + HW2 (CB + producer Kafka)
-├── database/                      # init SQL HW1/HW2
-│   ├── user_db_init.sql
-│   └── data_db_init.sql
+├── user-manager/
+├── data-collector/
+├── alert-system/
+├── alert-notifier/
 │
-├── alert_system/                  # HW2 (consumer to-alert-system + producer to-notifier)
-│   ├── app.py
-│   ├── kafka_consumer.py
-│   ├── kafka_producer.py
-│   ├── Dockerfile
-│   └── requirements.txt
+├── k8s/
+│   ├── namespace.yaml
+│   ├── app-config.yaml
+│   ├── app-secrets.yaml
+│   ├── database.yaml
+│   ├── kafka.yaml
+│   ├── user-manager.yaml
+│   ├── data-collector.yaml
+│   ├── alert-system.yaml
+│   ├── alert-notifier.yaml
+│   ├── prometheus.yaml
+│   └── ingress.yaml
 │
-├── alert_notifier/                # HW2 (consumer to-notifier + invio SMTP)
-│   ├── app.py            # oppure main.py (entrypoint)
-│   ├── smtp_notifier.py   # logica SMTP
-│   ├── kafka_consumer.py
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── infra/
-│   ├── nginx/                     # HW2 API Gateway
-│   │   ├── Dockerfile
-│   │   └── nginx.conf
-│   │
-│   └── kafka/                     # HW2 Kafka esterno
-│       └── docker-compose.yaml    # compose standalone del broker
-│
-├── docker-compose.yaml            # compose principale (microservizi + db + gateway)
-├── .env
-└── README.md
+├── README.md
 ```
 
-### Come Fermare il Sistema
-Per fermare e rimuovere i container:
-```bash
-docker compose down
-```
+---
 
-Per fermare e rimuovere anche i volumi (perdita dati):
-```bash
-docker compose down -v
-```
+## Conclusione
+
+Homework #3 completa l'evoluzione del sistema verso un'architettura scalabile, osservabile e production-ready, applicando principi di **cloud-native computing**, **event-driven architecture** e **monitoring avanzato** tramite **Kubernetes** e **Prometheus**.
+├── README.md
+
+Conclusione
+
+Homework #3 completa l’evoluzione del sistema verso un’architettura scalabile, osservabile e production-ready, applicando principi di cloud-native computing, event-driven architecture e monitoring avanzato tramite Kubernetes e Prometheus.
+
+
+---
+
+Se vuoi, nel prossimo messaggio posso:
+- **semplificarlo per l’orale** (versione “racconto al prof”)
+- aggiungere una **checklist rapida da esame**
+- oppure adattarlo esattamente allo **stile del tuo corso/prof**
