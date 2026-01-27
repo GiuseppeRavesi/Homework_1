@@ -276,26 +276,81 @@ kind delete cluster --name dsbd-cluster
 ## Struttura del Repository (HW3)
 
 ```
-Homework_1/
-├── user-manager/
-├── data-collector/
-├── alert-system/
-├── alert-notifier/
+Progetto_DSBD/
 │
-├── k8s/
-│   ├── namespace.yaml
-│   ├── app-config.yaml
-│   ├── app-secrets.yaml
-│   ├── database.yaml
-│   ├── kafka.yaml
-│   ├── user-manager.yaml
-│   ├── data-collector.yaml
-│   ├── alert-system.yaml
-│   ├── alert-notifier.yaml
-│   ├── prometheus.yaml
-│   └── ingress.yaml
+├── Homework1/
+│   ├── Homework_1/
+│   │   ├── user_manager/
+│   │   │   ├── app.py
+│   │   │   ├── Dockerfile
+│   │   │   ├── requirements.txt
+│   │   │   └── grpc_definitions/
+│   │   │       ├── __init__.py
+│   │   │       ├── user_pb2.py
+│   │   │       ├── user_pb2_grpc.py
+│   │   │       └── user.proto
+│   │   │
+│   │   ├── data_collector/
+│   │   │   ├── app.py
+│   │   │   ├── Dockerfile
+│   │   │   ├── requirements.txt
+│   │   │   ├── kafka_producer.py
+│   │   │   ├── opensky_client.py
+│   │   │   ├── grpc_client.py
+│   │   │   ├── database.py
+│   │   │   ├── circuit_breaker.py
+│   │   │   └── grpc_definitions/
+│   │   │       ├── __init__.py
+│   │   │       ├── user_pb2.py
+│   │   │       ├── user_pb2_grpc.py
+│   │   │       └── user.proto
+│   │   │
+│   │   ├── alert_system/
+│   │   │   ├── app.py
+│   │   │   ├── Dockerfile
+│   │   │   ├── requirements.txt
+│   │   │   └── kafka_consumer.py
+│   │   │
+│   │   ├── alert_notifier/
+│   │   │   ├── app.py
+│   │   │   ├── Dockerfile
+│   │   │   ├── requirements.txt
+│   │   │   ├── kafka_consumer.py
+│   │   │   └── smtp_notifier.py
+│   │   │
+│   │   ├── database/
+│   │   │   ├── user_db_init.sql
+│   │   │   └── data_db_init.sql
+│   │   │
+│   │   ├── infra/
+│   │   │   ├── k8s/
+│   │   │   │   ├── namespace.yaml
+│   │   │   │   ├── app-config.yaml
+│   │   │   │   ├── app-secrects.yaml
+│   │   │   │   ├── database.yaml
+│   │   │   │   ├── kafka.yaml
+│   │   │   │   ├── user-manager.yaml
+│   │   │   │   ├── data-collector.yaml
+│   │   │   │   ├── alert-system.yaml
+│   │   │   │   ├── alert-notifier.yaml
+│   │   │   │   ├── prometheus.yaml
+│   │   │   │   └── ingress.yaml
+│   │   │   │
+│   │   │   ├── kafka/
+│   │   │   │   └── docker-compose.yaml
+│   │   │   │
+│   │   │   └── nginx/
+│   │   │       ├── Dockerfile
+│   │   │       └── nginx.conf
+│   │   │
+│   │   ├── docker-compose.yaml
+│   │   ├── .env (da creare)
+│   │   ├── API Ngix.postman_collection.json
+│   │   └── README.md
+│   │
+│   └── README.md
 │
-├── README.md
+└── [Altri branch/folder del progetto]
 ```
 
 ---
