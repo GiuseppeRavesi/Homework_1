@@ -357,8 +357,3 @@ Progetto_DSBD/
 ## Conclusione
 
 Homework #3 completa l'evoluzione del sistema verso un'architettura scalabile, osservabile e production-ready, applicando principi di **cloud-native computing**, **event-driven architecture** e **monitoring avanzato** tramite **Kubernetes** e **Prometheus**.
-
-Conclusione
-
-Homework #3 completa l’evoluzione del sistema verso un’architettura scalabile, osservabile e production-ready, applicando principi di cloud-native computing, event-driven architecture e monitoring avanzato tramite Kubernetes e Prometheus.
-
