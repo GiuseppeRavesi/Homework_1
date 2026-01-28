@@ -362,10 +362,3 @@ Conclusione
 
 Homework #3 completa l’evoluzione del sistema verso un’architettura scalabile, osservabile e production-ready, applicando principi di cloud-native computing, event-driven architecture e monitoring avanzato tramite Kubernetes e Prometheus.
 
-
----
-
-Se vuoi, nel prossimo messaggio posso:
-- **semplificarlo per l’orale** (versione “racconto al prof”)
-- aggiungere una **checklist rapida da esame**
-- oppure adattarlo esattamente allo **stile del tuo corso/prof**
