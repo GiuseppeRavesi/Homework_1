@@ -84,7 +84,6 @@ spec:
             - name: KAFKA_NUM_PARTITIONS
               value: "1"
 
-            # log più verbosi per capire crash (puoi lasciarli WARN dopo)
             - name: KAFKA_LOG4J_ROOT_LOGGER
               value: "INFO, stdout"
             - name: KAFKA_LOG4J_LOGGERS
